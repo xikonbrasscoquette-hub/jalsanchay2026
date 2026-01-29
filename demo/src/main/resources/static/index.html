@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bharat RWH Estimator</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body { font-family: 'Poppins', sans-serif; margin: 0; padding: 0; background: #f4f7f6; height: 100vh; display: flex; flex-direction: column; }
+        
+        /* Navbar */
+        .navbar { background: linear-gradient(135deg, #0061f2 0%, #00c6f9 100%); color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 1000; }
+        .logo { font-size: 1.5rem; font-weight: bold; }
+        
+        /* Main Layout */
+        .container { display: flex; flex: 1; position: relative; overflow: hidden; }
+        
+        /* Map Area */
+        #map { flex: 3; height: 100%; z-index: 1; }
+        
+        /* Sidebar */
+        .sidebar { flex: 1; background: white; padding: 20px; box-shadow: -4px 0 15px rgba(0,0,0,0.05); overflow-y: auto; z-index: 2; min-width: 350px; max-width: 400px; }
+        
+        /* Cards */
+        .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        h3 { margin-top: 0; color: #333; font-size: 1.1rem; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px; }
+        
+        /* Inputs */
+        input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; margin-top: 5px; }
+        
+        /* Button */
+        button { width: 100%; padding: 12px; background: #0061f2; color: white; border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; transition: background 0.3s; margin-top: 10px; }
+        button:hover { background: #0056d6; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* Results */
+        .result-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95rem; }
+        .result-val { font-weight: bold; color: #0061f2; }
+        
+        /* AI Box */
+        .ai-box { background: #e3f2fd; border-left: 4px solid #2196f3; padding: 10px; margin-bottom: 15px; border-radius: 4px; }
+        .ai-label { font-weight: bold; color: #1565c0; display: block; margin-bottom: 5px; }
+        
+        /* Graph Container */
+        .chart-container { position: relative; height: 200px; width: 100%; margin-top: 10px; }
+
+        /* Toast */
+        #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 4px; padding: 16px; position: fixed; z-index: 2000; right: 30px; bottom: 30px; opacity: 0; transition: opacity 0.5s; }
+        #toast.show { visibility: visible; opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <div class="logo">💧 Jal Sanchay</div>
+        <div>SIH 2025 Prototype</div>
+    </div>
+
+    <div class="container">
+        <div id="map"></div>
+
+        <div class="sidebar">
+            <div class="card">
+                <h3>1️⃣ Locate Roof</h3>
+                <p style="font-size: 0.9rem; color: #666;">Use the ⬠ tool on the map to draw the roof.</p>
+                <div class="result-row">
+                    <span>Roof Area:</span>
+                    <span class="result-val"><span id="areaDisplay">0</span> m²</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>2️⃣ Rainfall Data</h3>
+                <label style="font-size: 0.9rem;">Annual Rainfall (mm)</label>
+                <input type="number" id="rainfall" value="1800">
+                <button id="analyzeBtn" onclick="submitAssessment()">🚀 Analyze Viability</button>
+            </div>
+
+            <div id="results" class="card" style="display: none; border-top: 4px solid #00c6f9;">
+                <h3>📊 Assessment Report</h3>
+
+                <div class="ai-box">
+                    <span class="ai-label">🤖 AI Prediction (2027)</span>
+                    <span id="resRain" style="font-size: 1.2rem; font-weight: bold;">--</span>
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="rainChart"></canvas>
+                </div>
+                <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
+
+                <div class="result-row"><span>Harvest Potential:</span> <span class="result-val" id="resWater">0 L</span></div>
+                <div class="result-row"><span>Tank Size:</span> <span class="result-val" id="resTank">0 L</span></div>
+                <div class="result-row"><span>Est. Cost:</span> <span class="result-val" id="resCost">₹0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast">✅ Done!</div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+    <script>
+        // 1. Map Setup
+        var map = L.map('map').setView([20.5937, 78.9629], 5);
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(map);
+
+        // 2. Draw Tools
+        var drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+        var drawControl = new L.Control.Draw({
+            draw: { polygon: { allowIntersection: false, showArea: true }, rectangle: true, marker: false, circle: false, circlemarker: false, polyline: false },
+            edit: { featureGroup: drawnItems }
+        });
+        map.addControl(drawControl);
+
+        var calculatedArea = 0;
+        let myChart = null;
+
+        // 3. Handle Draw Event
+        map.on(L.Draw.Event.CREATED, function (e) {
+            drawnItems.clearLayers();
+            drawnItems.addLayer(e.layer);
+            var geoJson = e.layer.toGeoJSON();
+            calculatedArea = turf.area(geoJson);
+            document.getElementById('areaDisplay').innerText = calculatedArea.toFixed(2);
+        });
+
+        // 4. Submit to Backend
+        async function submitAssessment() {
+            if (calculatedArea === 0) { showToast("⚠️ Draw a roof first!"); return; }
+
+            const btn = document.getElementById('analyzeBtn');
+            btn.innerText = "⏳ Processing...";
+            btn.disabled = true;
+
+            try {
+                // Change port if needed (9090 or 9091)
+                const response = await fetch('http://localhost:9090/calculate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ area: parseFloat(calculatedArea) })
+                });
+
+                const data = await response.json();
+
+                // Show Results
+                document.getElementById('results').style.display = 'block';
+                document.getElementById('resWater').innerText = data.litersSaved + " L";
+                document.getElementById('resTank').innerText = data.tankSize + " L";
+                document.getElementById('resCost').innerText = "₹" + data.totalCost;
+                document.getElementById('resRain').innerText = data.rainfallUsed + " mm";
+
+                // Render Chart
+                renderChart(data.history || [], data.rainfallUsed);
+                showToast("✅ AI Analysis Complete!");
+
+            } catch (error) {
+                console.error(error);
+                showToast("❌ Error: Check Console");
+            } finally {
+                btn.innerText = "🚀 Analyze Viability";
+                btn.disabled = false;
+            }
+        }
+
+        function renderChart(history, prediction) {
+            const ctx = document.getElementById('rainChart').getContext('2d');
+            if (myChart) myChart.destroy();
+
+            // Prepare Data
+            const years = ['2019', '2020', '2021', '2022', '2023', '2027 (AI)'];
+            // Fill history with 0 if empty to prevent crash
+            const safeHistory = history.length ? history : [0,0,0,0,0];
+            const dataPoints = [...safeHistory, prediction];
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: years,
+                    datasets: [{
+                        label: 'Rainfall Trend',
+                        data: dataPoints,
+                        borderColor: '#00c6f9',
+                        backgroundColor: 'rgba(0, 198, 249, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        pointBackgroundColor: ['#333', '#333', '#333', '#333', '#333', 'red'],
+                        pointRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: false } }
+                }
+            });
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById("toast");
+            t.innerText = msg;
+            t.className = "show";
+            setTimeout(() => t.className = t.className.replace("show", ""), 3000);
+        }
+    </script>
+</body>
+</html>
